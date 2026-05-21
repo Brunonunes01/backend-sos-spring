@@ -1,0 +1,7 @@
+target
+.idea
+*.iml
+anotacoes_melhorias
+melhorias
+.git
+.gitignore
