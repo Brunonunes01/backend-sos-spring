@@ -5,16 +5,17 @@ import com.sos.dto.ordem.ItemOrdemServicoResponse;
 import com.sos.dto.ordem.OrdemServicoRequest;
 import com.sos.dto.ordem.OrdemServicoResponse;
 import com.sos.exception.InvalidStatusTransitionException;
+import com.sos.exception.BusinessException;
 import com.sos.exception.ResourceNotFoundException;
 import com.sos.model.Cliente;
 import com.sos.model.ItemOrdemServico;
 import com.sos.model.OrdemServico;
-import com.sos.model.Servico;
 import com.sos.model.StatusOS;
+import com.sos.model.TipoItemOS;
+import com.sos.model.TipoOS;
 import com.sos.model.Usuario;
 import com.sos.repository.ClienteRepository;
 import com.sos.repository.OrdemServicoRepository;
-import com.sos.repository.ServicoRepository;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -33,25 +34,25 @@ public class OrdemServicoService {
 
     private final OrdemServicoRepository ordemServicoRepository;
     private final ClienteRepository clienteRepository;
-    private final ServicoRepository servicoRepository;
     private final UsuarioService usuarioService;
 
     public OrdemServicoService(OrdemServicoRepository ordemServicoRepository,
                                ClienteRepository clienteRepository,
-                               ServicoRepository servicoRepository,
                                UsuarioService usuarioService) {
         this.ordemServicoRepository = ordemServicoRepository;
         this.clienteRepository = clienteRepository;
-        this.servicoRepository = servicoRepository;
         this.usuarioService = usuarioService;
     }
 
     @Transactional(readOnly = true)
-    public Page<OrdemServicoResponse> listar(StatusOS status, Long clienteId, LocalDate dataInicial, LocalDate dataFinal, Pageable pageable) {
+    public Page<OrdemServicoResponse> listar(StatusOS status, TipoOS tipo, Long clienteId, LocalDate dataInicial, LocalDate dataFinal, Pageable pageable) {
         Specification<OrdemServico> specification = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (tipo != null) {
+                predicates.add(cb.equal(root.get("tipo"), tipo));
             }
             if (clienteId != null) {
                 predicates.add(cb.equal(root.get("cliente").get("id"), clienteId));
@@ -156,11 +157,15 @@ public class OrdemServicoService {
                 ordemServico.getAtualizadoEm(),
                 ordemServico.getItens().stream().map(item -> new ItemOrdemServicoResponse(
                         item.getId(),
-                        item.getServico().getId(),
-                        item.getServico().getNome(),
+                        item.getTipoItem(),
+                        item.getServico() != null ? item.getServico().getId() : null,
+                        item.getServico() != null ? item.getServico().getNome() : null,
+                        item.getDescricaoItem(),
                         item.getQuantidade(),
                         item.getPrecoUnitario(),
-                        item.getSubtotal()
+                        item.getSubtotal(),
+                        item.getReferenciaLink(),
+                        item.getReferenciaFonte()
                 )).toList()
         );
     }
@@ -188,13 +193,30 @@ public class OrdemServicoService {
 
     private void preencherItens(List<ItemOrdemServicoRequest> itensRequest, OrdemServico ordemServico) {
         for (ItemOrdemServicoRequest itemRequest : itensRequest) {
-            Servico servico = servicoRepository.findByIdAndAtivoTrue(itemRequest.servicoId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Serviço com id " + itemRequest.servicoId() + " não encontrado"));
             ItemOrdemServico item = new ItemOrdemServico();
-            item.setServico(servico);
+            TipoItemOS tipoItem = itemRequest.tipoItem() != null ? itemRequest.tipoItem() : TipoItemOS.SERVICO;
+            item.setTipoItem(tipoItem);
             item.setQuantidade(itemRequest.quantidade());
-            BigDecimal preco = itemRequest.precoUnitario() != null ? itemRequest.precoUnitario() : servico.getPrecoBase();
+
+            BigDecimal preco;
+            if (tipoItem == TipoItemOS.SERVICO) {
+                throw new BusinessException("Itens aceitam apenas PRODUTO. Serviços não devem entrar no carrinho.");
+            }
+            if (itemRequest.descricaoItem() == null || itemRequest.descricaoItem().isBlank()) {
+                throw new BusinessException("descricaoItem é obrigatória para itens do tipo PRODUTO");
+            }
+            if (itemRequest.precoUnitario() == null) {
+                throw new BusinessException("precoUnitario é obrigatório para itens do tipo PRODUTO");
+            }
+            item.setDescricaoItem(itemRequest.descricaoItem().trim());
+            item.setReferenciaLink(itemRequest.referenciaLink());
+            item.setReferenciaFonte(itemRequest.referenciaFonte());
+            preco = itemRequest.precoUnitario();
+
             item.setPrecoUnitario(preco);
+            if (item.getPrecoUnitario().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException("precoUnitario deve ser maior que zero");
+            }
             item.calcularSubtotal();
             ordemServico.adicionarItem(item);
         }
