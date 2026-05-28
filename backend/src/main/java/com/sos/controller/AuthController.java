@@ -3,6 +3,7 @@ package com.sos.controller;
 import com.sos.dto.auth.AuthResponse;
 import com.sos.dto.auth.LoginRequest;
 import com.sos.dto.auth.UserMeResponse;
+import com.sos.dto.auth.UserMeUpdateRequest;
 import com.sos.service.AuthService;
 import com.sos.service.UsuarioService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +12,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,5 +47,11 @@ public class AuthController {
     @Operation(summary = "Usuário autenticado")
     public ResponseEntity<UserMeResponse> me() {
         return ResponseEntity.ok(usuarioService.me());
+    }
+
+    @PutMapping("/me")
+    @Operation(summary = "Atualizar conta do usuário autenticado")
+    public ResponseEntity<UserMeResponse> atualizarMe(@Valid @RequestBody UserMeUpdateRequest request) {
+        return ResponseEntity.ok(usuarioService.atualizarContaLogada(request));
     }
 }

@@ -32,6 +32,9 @@ function formatarMoeda(valor) {
   })
 }
 
+const REGEX_DESCRICAO_PRODUTO = /^(?=.*[A-Za-zÀ-ÿ])[A-Za-zÀ-ÿ0-9 .-]+$/
+
+
 function OrdemForm() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -154,17 +157,20 @@ function OrdemForm() {
       return
     }
 
-    if (!form.descricaoProblema) {
+    if (!form.descricaoProblema.trim()) {
       setErro('Preencha a descrição do problema.')
       return
     }
 
     const itemInvalido = form.itens.some((item) => {
-      return !item.descricaoItem || Number(item.quantidade) <= 0 || Number(item.precoUnitario) <= 0
+      return !item.descricaoItem
+        || !REGEX_DESCRICAO_PRODUTO.test(String(item.descricaoItem).trim())
+        || Number(item.quantidade) <= 0
+        || Number(item.precoUnitario) <= 0
     })
 
     if (itemInvalido) {
-      setErro('Preencha corretamente os produtos do carrinho.')
+      setErro('Preencha corretamente os produtos. O nome do produto deve conter letras e não pode usar caracteres inválidos.')
       return
     }
 
@@ -172,11 +178,11 @@ function OrdemForm() {
       clienteId: Number(form.clienteId),
       tipo: form.tipo,
       prioridade: form.prioridade,
-      descricaoProblema: form.descricaoProblema,
-      observacoes: form.observacoes,
+      descricaoProblema: form.descricaoProblema.trim(),
+      observacoes: form.observacoes.trim(),
       itens: form.itens.map((item) => ({
         tipoItem: 'PRODUTO',
-        descricaoItem: item.descricaoItem,
+        descricaoItem: String(item.descricaoItem).trim(),
         quantidade: Number(item.quantidade),
         precoUnitario: Number(item.precoUnitario),
         referenciaLink: item.referenciaLink || null,

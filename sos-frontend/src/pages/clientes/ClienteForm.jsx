@@ -8,6 +8,15 @@ import {
   atualizarCliente
 } from '../../services/clienteService'
 
+const REGEX_NOME = /^(?=.*[A-Za-zÀ-ÿ])[A-Za-zÀ-ÿ0-9 .,'-]{3,150}$/
+const REGEX_ENDERECO = /^(?=.*[A-Za-zÀ-ÿ0-9])[A-Za-zÀ-ÿ0-9 .,'\-/º°]{3,255}$/
+const REGEX_CIDADE = /^(?=.*[A-Za-zÀ-ÿ])[A-Za-zÀ-ÿ .'-]{2,100}$/
+const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/
+
+function manterDigitos(valor, limite) {
+  return (valor || '').replace(/\D/g, '').slice(0, limite)
+}
+
 function ClienteForm() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -42,13 +51,13 @@ function ClienteForm() {
 
         setForm({
           nome: cliente.nome || '',
-          cpfCnpj: cliente.cpfCnpj || '',
+          cpfCnpj: manterDigitos(cliente.cpfCnpj, 14),
           email: cliente.email || '',
-          telefone: cliente.telefone || '',
+          telefone: manterDigitos(cliente.telefone, 11),
           endereco: cliente.endereco || '',
           cidade: cliente.cidade || '',
-          uf: cliente.uf || '',
-          cep: cliente.cep || ''
+          uf: (cliente.uf || '').toUpperCase(),
+          cep: manterDigitos(cliente.cep, 8)
         })
       } catch (error) {
         alert(error.message)
@@ -61,27 +70,114 @@ function ClienteForm() {
   function handleChange(e) {
     const { name, value } = e.target
 
+    if (name === 'cpfCnpj') {
+      setForm((prev) => ({ ...prev, cpfCnpj: manterDigitos(value, 14) }))
+      return
+    }
+
+    if (name === 'telefone') {
+      setForm((prev) => ({ ...prev, telefone: manterDigitos(value, 11) }))
+      return
+    }
+
+    if (name === 'cep') {
+      setForm((prev) => ({ ...prev, cep: manterDigitos(value, 8) }))
+      return
+    }
+
+    if (name === 'uf') {
+      setForm((prev) => ({
+        ...prev,
+        uf: (value || '')
+          .replace(/[^A-Za-z]/g, '')
+          .slice(0, 2)
+          .toUpperCase()
+      }))
+      return
+    }
+
     setForm((prev) => ({
       ...prev,
       [name]: value
     }))
   }
 
+  function validarFormulario() {
+    const nome = form.nome.trim()
+    const cpfCnpj = manterDigitos(form.cpfCnpj, 14)
+    const email = form.email.trim().toLowerCase()
+    const telefone = manterDigitos(form.telefone, 11)
+    const endereco = form.endereco.trim()
+    const cidade = form.cidade.trim()
+    const uf = form.uf.trim().toUpperCase()
+    const cep = manterDigitos(form.cep, 8)
+
+    if (!nome || !cpfCnpj || !email || !telefone || !endereco || !cidade || !uf || !cep) {
+      return 'Preencha todos os campos obrigatórios.'
+    }
+
+    if (!REGEX_NOME.test(nome)) {
+      return 'Nome inválido. Evite caracteres especiais e use ao menos 3 caracteres.'
+    }
+
+    if (!(cpfCnpj.length === 11 || cpfCnpj.length === 14)) {
+      return 'CPF/CNPJ deve conter 11 ou 14 dígitos.'
+    }
+
+    if (!REGEX_EMAIL.test(email)) {
+      return 'E-mail inválido. Use um domínio completo, ex.: nome@empresa.com.'
+    }
+
+    if (!(telefone.length === 10 || telefone.length === 11)) {
+      return 'Telefone deve conter 10 ou 11 dígitos.'
+    }
+
+    if (!REGEX_ENDERECO.test(endereco)) {
+      return 'Endereço inválido. Evite caracteres especiais como #, $, @ e *.'
+    }
+
+    if (!REGEX_CIDADE.test(cidade)) {
+      return 'Cidade inválida. Use apenas letras e espaços.'
+    }
+
+    if (!/^[A-Z]{2}$/.test(uf)) {
+      return 'UF deve conter 2 letras.'
+    }
+
+    if (cep.length !== 8) {
+      return 'CEP deve conter 8 dígitos.'
+    }
+
+    return ''
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setErro('')
 
-    if (!form.nome || !form.cpfCnpj || !form.email) {
-      setErro('Preencha nome, CPF/CNPJ e email.')
+    const mensagemErro = validarFormulario()
+    if (mensagemErro) {
+      setErro(mensagemErro)
       return
+    }
+
+    const payload = {
+      nome: form.nome.trim(),
+      cpfCnpj: manterDigitos(form.cpfCnpj, 14),
+      email: form.email.trim().toLowerCase(),
+      telefone: manterDigitos(form.telefone, 11),
+      endereco: form.endereco.trim(),
+      cidade: form.cidade.trim(),
+      uf: form.uf.trim().toUpperCase(),
+      cep: manterDigitos(form.cep, 8)
     }
 
     try {
       if (editando) {
-        await atualizarCliente(id, form)
+        await atualizarCliente(id, payload)
         alert('Cliente atualizado com sucesso.')
       } else {
-        await criarCliente(form)
+        await criarCliente(payload)
         alert('Cliente cadastrado com sucesso.')
       }
 
@@ -117,6 +213,8 @@ function ClienteForm() {
                   name="nome"
                   value={form.nome}
                   onChange={handleChange}
+                  maxLength="150"
+                  required
                 />
               </div>
 
@@ -128,6 +226,8 @@ function ClienteForm() {
                   name="cpfCnpj"
                   value={form.cpfCnpj}
                   onChange={handleChange}
+                  maxLength="14"
+                  required
                 />
               </div>
             </div>
@@ -149,7 +249,16 @@ function ClienteForm() {
                   name="email"
                   value={form.email}
                   onChange={handleChange}
+                  list="dominios-email"
+                  maxLength="150"
+                  required
                 />
+                <datalist id="dominios-email">
+                  <option value="@gmail.com" />
+                  <option value="@outlook.com" />
+                  <option value="@hotmail.com" />
+                  <option value="@yahoo.com" />
+                </datalist>
               </div>
 
               <div className="col-md-6 mb-3">
@@ -160,6 +269,8 @@ function ClienteForm() {
                   name="telefone"
                   value={form.telefone}
                   onChange={handleChange}
+                  maxLength="11"
+                  required
                 />
               </div>
 
@@ -171,6 +282,8 @@ function ClienteForm() {
                   name="endereco"
                   value={form.endereco}
                   onChange={handleChange}
+                  maxLength="255"
+                  required
                 />
               </div>
 
@@ -182,6 +295,8 @@ function ClienteForm() {
                   name="cidade"
                   value={form.cidade}
                   onChange={handleChange}
+                  maxLength="100"
+                  required
                 />
               </div>
 
@@ -194,6 +309,7 @@ function ClienteForm() {
                   maxLength="2"
                   value={form.uf}
                   onChange={handleChange}
+                  required
                 />
               </div>
 
@@ -205,6 +321,8 @@ function ClienteForm() {
                   name="cep"
                   value={form.cep}
                   onChange={handleChange}
+                  maxLength="8"
+                  required
                 />
               </div>
             </div>

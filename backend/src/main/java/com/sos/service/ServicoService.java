@@ -66,10 +66,14 @@ public class ServicoService {
     }
 
     private void aplicarDados(Servico servico, ServicoRequest request, CategoriaServico categoria) {
-        servico.setNome(request.nome());
-        servico.setDescricao(request.descricao());
+        servico.setNome(normalizarTexto(request.nome()));
+        servico.setDescricao(normalizarTexto(request.descricao()));
         servico.setPrecoBase(request.precoBase());
         servico.setCategoria(categoria);
+    }
+
+    private String normalizarTexto(String valor) {
+        return valor != null ? valor.trim() : null;
     }
 
     private ServicoResponse toResponse(Servico servico) {

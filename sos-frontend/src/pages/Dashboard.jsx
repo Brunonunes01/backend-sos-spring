@@ -70,6 +70,10 @@ function Dashboard() {
     }
   }, [dados])
 
+  function formatarStatus(status) {
+    return String(status || '').replaceAll('_', ' ')
+  }
+
   function badgeStatus(status) {
     const mapa = {
       ABERTA: 'bg-primary',
@@ -78,7 +82,7 @@ function Dashboard() {
       CANCELADA: 'bg-danger'
     }
 
-    return <span className={`badge ${mapa[status] || 'bg-secondary'}`}>{status}</span>
+    return <span className={`badge ${mapa[status] || 'bg-secondary'}`}>{formatarStatus(status)}</span>
   }
 
   function formatarMoeda(valor) {
@@ -161,11 +165,11 @@ function Dashboard() {
                 <strong>{resumo.ordensAbertas}</strong>
               </div>
               <div>
-                <span>EM_ANDAMENTO</span>
+                <span>EM ANDAMENTO</span>
                 <strong>{resumo.ordensAndamento}</strong>
               </div>
               <div>
-                <span>CONCLUIDAS</span>
+                <span>CONCLUÍDAS</span>
                 <strong>{resumo.ordensConcluidas}</strong>
               </div>
               <div>

@@ -32,8 +32,8 @@ public class CategoriaServicoService {
     @Transactional
     public CategoriaServicoResponse criar(CategoriaServicoRequest request) {
         CategoriaServico categoria = new CategoriaServico();
-        categoria.setNome(request.nome());
-        categoria.setDescricao(request.descricao());
+        categoria.setNome(normalizarTexto(request.nome()));
+        categoria.setDescricao(normalizarTexto(request.descricao()));
         categoria.setAtivo(true);
         return toResponse(categoriaServicoRepository.save(categoria));
     }
@@ -41,8 +41,8 @@ public class CategoriaServicoService {
     @Transactional
     public CategoriaServicoResponse atualizar(Long id, CategoriaServicoRequest request) {
         CategoriaServico categoria = buscarCategoriaAtiva(id);
-        categoria.setNome(request.nome());
-        categoria.setDescricao(request.descricao());
+        categoria.setNome(normalizarTexto(request.nome()));
+        categoria.setDescricao(normalizarTexto(request.descricao()));
         return toResponse(categoriaServicoRepository.save(categoria));
     }
 
@@ -57,6 +57,10 @@ public class CategoriaServicoService {
     public CategoriaServico buscarCategoriaAtiva(Long id) {
         return categoriaServicoRepository.findByIdAndAtivoTrue(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Categoria com id " + id + " não encontrada"));
+    }
+
+    private String normalizarTexto(String valor) {
+        return valor != null ? valor.trim() : null;
     }
 
     private CategoriaServicoResponse toResponse(CategoriaServico categoria) {

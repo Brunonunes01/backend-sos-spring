@@ -1,6 +1,7 @@
 package com.sos.service;
 
 import com.sos.dto.auth.UserMeResponse;
+import com.sos.dto.auth.UserMeUpdateRequest;
 import com.sos.dto.usuario.UsuarioRequest;
 import com.sos.dto.usuario.UsuarioResponse;
 import com.sos.dto.usuario.UsuarioUpdateRequest;
@@ -83,6 +84,26 @@ public class UsuarioService {
     public UserMeResponse me() {
         Usuario usuario = usuarioLogado();
         return new UserMeResponse(usuario.getId(), usuario.getNome(), usuario.getEmail(), usuario.getPerfil());
+    }
+
+    @Transactional
+    public UserMeResponse atualizarContaLogada(UserMeUpdateRequest request) {
+        Usuario usuario = usuarioLogado();
+        String email = request.email().trim().toLowerCase();
+
+        if (usuarioRepository.existsByEmailAndIdNot(email, usuario.getId())) {
+            throw new ConflictException("Já existe usuário com email " + email);
+        }
+
+        usuario.setNome(request.nome().trim());
+        usuario.setEmail(email);
+
+        if (request.novaSenha() != null && !request.novaSenha().isBlank()) {
+            usuario.setSenha(passwordEncoder.encode(request.novaSenha()));
+        }
+
+        Usuario salvo = usuarioRepository.save(usuario);
+        return new UserMeResponse(salvo.getId(), salvo.getNome(), salvo.getEmail(), salvo.getPerfil());
     }
 
     @Transactional(readOnly = true)

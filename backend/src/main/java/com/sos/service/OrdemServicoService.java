@@ -4,12 +4,13 @@ import com.sos.dto.ordem.ItemOrdemServicoRequest;
 import com.sos.dto.ordem.ItemOrdemServicoResponse;
 import com.sos.dto.ordem.OrdemServicoRequest;
 import com.sos.dto.ordem.OrdemServicoResponse;
-import com.sos.exception.InvalidStatusTransitionException;
 import com.sos.exception.BusinessException;
+import com.sos.exception.InvalidStatusTransitionException;
 import com.sos.exception.ResourceNotFoundException;
 import com.sos.model.Cliente;
 import com.sos.model.ItemOrdemServico;
 import com.sos.model.OrdemServico;
+import com.sos.model.Servico;
 import com.sos.model.StatusOS;
 import com.sos.model.TipoItemOS;
 import com.sos.model.TipoOS;
@@ -28,20 +29,26 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Service
 public class OrdemServicoService {
 
+    private static final Pattern DESCRICAO_PRODUTO_PATTERN = Pattern.compile("^(?=.*[A-Za-zÀ-ÿ])[A-Za-zÀ-ÿ0-9 .,'\\-/º°]+$");
+
     private final OrdemServicoRepository ordemServicoRepository;
     private final ClienteRepository clienteRepository;
     private final UsuarioService usuarioService;
+    private final ServicoService servicoService;
 
     public OrdemServicoService(OrdemServicoRepository ordemServicoRepository,
                                ClienteRepository clienteRepository,
-                               UsuarioService usuarioService) {
+                               UsuarioService usuarioService,
+                               ServicoService servicoService) {
         this.ordemServicoRepository = ordemServicoRepository;
         this.clienteRepository = clienteRepository;
         this.usuarioService = usuarioService;
+        this.servicoService = servicoService;
     }
 
     @Transactional(readOnly = true)
@@ -104,11 +111,21 @@ public class OrdemServicoService {
         Cliente cliente = clienteRepository.findByIdAndAtivoTrue(request.clienteId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente com id " + request.clienteId() + " não encontrado"));
 
+        TipoOS tipoAtual = ordemServico.getTipo();
+        boolean convertendoOrcamentoParaOrdem = tipoAtual == TipoOS.ORCAMENTO && request.tipo() == TipoOS.ORDEM_SERVICO;
+
         ordemServico.setCliente(cliente);
         ordemServico.setTipo(request.tipo());
         ordemServico.setPrioridade(request.prioridade());
         ordemServico.setDescricaoProblema(request.descricaoProblema());
         ordemServico.setObservacoes(request.observacoes());
+
+        if (convertendoOrcamentoParaOrdem) {
+            ordemServico.setStatus(StatusOS.ABERTA);
+            ordemServico.setDataConclusao(null);
+            ordemServico.setUsuarioFechamento(null);
+        }
+
         ordemServico.limparItens();
         preencherItens(request.itens(), ordemServico);
         ordemServico.recalcularValorTotal();
@@ -179,46 +196,98 @@ public class OrdemServicoService {
         if (atual == novo) {
             return;
         }
-        if (novo == StatusOS.CANCELADA) {
+
+        if (atual == StatusOS.ABERTA && (novo == StatusOS.EM_ANDAMENTO || novo == StatusOS.CANCELADA)) {
             return;
         }
-        if (atual == StatusOS.ABERTA && novo == StatusOS.EM_ANDAMENTO) {
+
+        if (atual == StatusOS.EM_ANDAMENTO && (novo == StatusOS.CONCLUIDA || novo == StatusOS.CANCELADA)) {
             return;
         }
-        if (atual == StatusOS.EM_ANDAMENTO && novo == StatusOS.CONCLUIDA) {
-            return;
-        }
+
         throw new InvalidStatusTransitionException("Não é permitido mudar status de " + atual + " para " + novo);
     }
 
     private void preencherItens(List<ItemOrdemServicoRequest> itensRequest, OrdemServico ordemServico) {
+        if (itensRequest == null || itensRequest.isEmpty()) {
+            throw new BusinessException("Informe ao menos um item no orçamento/ordem (serviço ou produto)");
+        }
+
         for (ItemOrdemServicoRequest itemRequest : itensRequest) {
             ItemOrdemServico item = new ItemOrdemServico();
-            TipoItemOS tipoItem = itemRequest.tipoItem() != null ? itemRequest.tipoItem() : TipoItemOS.SERVICO;
+            TipoItemOS tipoItem = resolverTipoItem(itemRequest);
             item.setTipoItem(tipoItem);
             item.setQuantidade(itemRequest.quantidade());
 
-            BigDecimal preco;
             if (tipoItem == TipoItemOS.SERVICO) {
-                throw new BusinessException("Itens aceitam apenas PRODUTO. Serviços não devem entrar no carrinho.");
+                preencherItemServico(item, itemRequest);
+            } else {
+                preencherItemProduto(item, itemRequest);
             }
-            if (itemRequest.descricaoItem() == null || itemRequest.descricaoItem().isBlank()) {
-                throw new BusinessException("descricaoItem é obrigatória para itens do tipo PRODUTO");
-            }
-            if (itemRequest.precoUnitario() == null) {
-                throw new BusinessException("precoUnitario é obrigatório para itens do tipo PRODUTO");
-            }
-            item.setDescricaoItem(itemRequest.descricaoItem().trim());
-            item.setReferenciaLink(itemRequest.referenciaLink());
-            item.setReferenciaFonte(itemRequest.referenciaFonte());
-            preco = itemRequest.precoUnitario();
 
-            item.setPrecoUnitario(preco);
-            if (item.getPrecoUnitario().compareTo(BigDecimal.ZERO) <= 0) {
-                throw new BusinessException("precoUnitario deve ser maior que zero");
-            }
             item.calcularSubtotal();
             ordemServico.adicionarItem(item);
+        }
+    }
+
+    private TipoItemOS resolverTipoItem(ItemOrdemServicoRequest itemRequest) {
+        if (itemRequest.tipoItem() != null) {
+            return itemRequest.tipoItem();
+        }
+        if (itemRequest.servicoId() != null) {
+            return TipoItemOS.SERVICO;
+        }
+        return TipoItemOS.PRODUTO;
+    }
+
+    private void preencherItemServico(ItemOrdemServico item, ItemOrdemServicoRequest itemRequest) {
+        if (itemRequest.servicoId() == null) {
+            throw new BusinessException("servicoId é obrigatório para itens do tipo SERVICO");
+        }
+
+        Servico servico = servicoService.buscarServicoAtivo(itemRequest.servicoId());
+        item.setServico(servico);
+
+        String descricao = itemRequest.descricaoItem() != null && !itemRequest.descricaoItem().isBlank()
+                ? itemRequest.descricaoItem().trim()
+                : servico.getNome();
+
+        item.setDescricaoItem(descricao);
+        item.setReferenciaLink(itemRequest.referenciaLink() != null ? itemRequest.referenciaLink().trim() : null);
+        item.setReferenciaFonte(itemRequest.referenciaFonte() != null ? itemRequest.referenciaFonte().trim() : null);
+
+        BigDecimal preco = itemRequest.precoUnitario() != null ? itemRequest.precoUnitario() : servico.getPrecoBase();
+        if (preco == null || preco.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("precoUnitario deve ser maior que zero");
+        }
+        item.setPrecoUnitario(preco);
+    }
+
+    private void preencherItemProduto(ItemOrdemServico item, ItemOrdemServicoRequest itemRequest) {
+        if (itemRequest.descricaoItem() == null || itemRequest.descricaoItem().isBlank()) {
+            throw new BusinessException("descricaoItem é obrigatória para itens do tipo PRODUTO");
+        }
+        if (itemRequest.precoUnitario() == null) {
+            throw new BusinessException("precoUnitario é obrigatório para itens do tipo PRODUTO");
+        }
+
+        String descricao = itemRequest.descricaoItem().trim();
+        validarDescricaoProduto(descricao);
+
+        item.setServico(null);
+        item.setDescricaoItem(descricao);
+        item.setReferenciaLink(itemRequest.referenciaLink() != null ? itemRequest.referenciaLink().trim() : null);
+        item.setReferenciaFonte(itemRequest.referenciaFonte() != null ? itemRequest.referenciaFonte().trim() : null);
+        item.setPrecoUnitario(itemRequest.precoUnitario());
+
+        if (item.getPrecoUnitario().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("precoUnitario deve ser maior que zero");
+        }
+    }
+
+    private void validarDescricaoProduto(String descricao) {
+        if (!DESCRICAO_PRODUTO_PATTERN.matcher(descricao).matches()) {
+            throw new BusinessException("descricaoItem deve conter letras e não pode ter caracteres inválidos");
         }
     }
 }

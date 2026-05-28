@@ -42,11 +42,12 @@ public class ClienteService {
 
     @Transactional
     public ClienteResponse criar(ClienteRequest request) {
-        if (clienteRepository.existsByCpfCnpj(request.cpfCnpj())) {
-            throw new ConflictException("Já existe cliente com CPF/CNPJ " + request.cpfCnpj());
+        ClienteRequest normalizado = normalizar(request);
+        if (clienteRepository.existsByCpfCnpj(normalizado.cpfCnpj())) {
+            throw new ConflictException("Já existe cliente com CPF/CNPJ " + normalizado.cpfCnpj());
         }
         Cliente cliente = new Cliente();
-        aplicarDados(cliente, request);
+        aplicarDados(cliente, normalizado);
         cliente.setAtivo(true);
         return toResponse(clienteRepository.save(cliente));
     }
@@ -54,10 +55,11 @@ public class ClienteService {
     @Transactional
     public ClienteResponse atualizar(Long id, ClienteRequest request) {
         Cliente cliente = buscarClienteAtivo(id);
-        if (clienteRepository.existsByCpfCnpjAndIdNot(request.cpfCnpj(), id)) {
-            throw new ConflictException("Já existe cliente com CPF/CNPJ " + request.cpfCnpj());
+        ClienteRequest normalizado = normalizar(request);
+        if (clienteRepository.existsByCpfCnpjAndIdNot(normalizado.cpfCnpj(), id)) {
+            throw new ConflictException("Já existe cliente com CPF/CNPJ " + normalizado.cpfCnpj());
         }
-        aplicarDados(cliente, request);
+        aplicarDados(cliente, normalizado);
         return toResponse(clienteRepository.save(cliente));
     }
 
@@ -78,6 +80,31 @@ public class ClienteService {
     public Cliente buscarClienteAtivo(Long id) {
         return clienteRepository.findByIdAndAtivoTrue(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cliente com id " + id + " não encontrado"));
+    }
+
+    private ClienteRequest normalizar(ClienteRequest request) {
+        return new ClienteRequest(
+                normalizarTexto(request.nome()),
+                somenteDigitos(request.cpfCnpj()),
+                normalizarEmail(request.email()),
+                somenteDigitos(request.telefone()),
+                normalizarTexto(request.endereco()),
+                normalizarTexto(request.cidade()),
+                request.uf() != null ? request.uf().trim().toUpperCase() : null,
+                somenteDigitos(request.cep())
+        );
+    }
+
+    private String normalizarTexto(String valor) {
+        return valor != null ? valor.trim() : null;
+    }
+
+    private String normalizarEmail(String valor) {
+        return valor != null ? valor.trim().toLowerCase() : null;
+    }
+
+    private String somenteDigitos(String valor) {
+        return valor != null ? valor.replaceAll("\\D", "") : null;
     }
 
     private void aplicarDados(Cliente cliente, ClienteRequest request) {

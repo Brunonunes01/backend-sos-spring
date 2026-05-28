@@ -30,6 +30,10 @@ function OrcamentoList() {
     carregarDados()
   }, [])
 
+  function formatarStatus(status) {
+    return String(status || '').replaceAll('_', ' ')
+  }
+
   function obterNomeCliente(clienteId) {
     const cliente = clientes.find((item) => item.id === clienteId)
     return cliente ? cliente.nome : 'Cliente não encontrado'
@@ -62,7 +66,7 @@ function OrcamentoList() {
 
     try {
       await alterarStatusOrcamento(orcamento.id, proximoStatus)
-      alert(`Status alterado para ${proximoStatus}.`)
+      alert(`Status alterado para ${formatarStatus(proximoStatus)}.`)
       carregarDados()
     } catch (error) {
       alert(error.message)
@@ -168,8 +172,8 @@ function OrcamentoList() {
           >
             <option value="">Todos</option>
             <option value="ABERTA">ABERTA</option>
-            <option value="EM_ANDAMENTO">EM_ANDAMENTO</option>
-            <option value="CONCLUIDA">CONCLUIDA</option>
+            <option value="EM_ANDAMENTO">EM ANDAMENTO</option>
+            <option value="CONCLUIDA">CONCLUÍDA</option>
             <option value="CANCELADA">CANCELADA</option>
           </select>
         </div>
@@ -212,7 +216,7 @@ function OrcamentoList() {
                     <td>{orcamento.prioridade}</td>
                     <td>
                       <span className={`badge ${obterClasseStatus(orcamento.status)}`}>
-                        {orcamento.status}
+                        {formatarStatus(orcamento.status)}
                       </span>
                     </td>
                     <td>{orcamento.dataAbertura ? new Date(orcamento.dataAbertura).toLocaleString('pt-BR') : '-'}</td>

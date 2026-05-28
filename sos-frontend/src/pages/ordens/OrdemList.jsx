@@ -30,6 +30,10 @@ function OrdemList() {
     carregarDados()
   }, [])
 
+  function formatarStatus(status) {
+    return String(status || '').replaceAll('_', ' ')
+  }
+
   function obterNomeCliente(clienteId) {
     const cliente = clientes.find((item) => item.id === clienteId)
     return cliente ? cliente.nome : 'Cliente não encontrado'
@@ -62,7 +66,7 @@ function OrdemList() {
 
     try {
       await alterarStatusOrdem(ordem.id, proximoStatus)
-      alert(`Status alterado para ${proximoStatus}.`)
+      alert(`Status alterado para ${formatarStatus(proximoStatus)}.`)
       carregarDados()
     } catch (error) {
       alert(error.message)
@@ -154,8 +158,8 @@ function OrdemList() {
           >
             <option value="">Todos</option>
             <option value="ABERTA">ABERTA</option>
-            <option value="EM_ANDAMENTO">EM_ANDAMENTO</option>
-            <option value="CONCLUIDA">CONCLUIDA</option>
+            <option value="EM_ANDAMENTO">EM ANDAMENTO</option>
+            <option value="CONCLUIDA">CONCLUÍDA</option>
             <option value="CANCELADA">CANCELADA</option>
           </select>
         </div>
@@ -198,7 +202,7 @@ function OrdemList() {
                   <td>{ordem.prioridade}</td>
                   <td>
                     <span className={`badge ${obterClasseStatus(ordem.status)}`}>
-                      {ordem.status}
+                      {formatarStatus(ordem.status)}
                     </span>
                   </td>
                   <td>{ordem.dataAbertura ? new Date(ordem.dataAbertura).toLocaleString('pt-BR') : '-'}</td>

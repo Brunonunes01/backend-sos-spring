@@ -28,7 +28,7 @@ function Login() {
         } else if (err.response.status === 401) {
           setError('E-mail ou senha inválidos. Tente novamente.')
         } else {
-          setError(`Falha no login (HTTP ${err.response.status}).`)
+          setError(err.message)
         }
       } else {
         setError('Falha inesperada ao fazer login.')
@@ -67,7 +67,14 @@ function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
+                list="dominios-email-login"
               />
+              <datalist id="dominios-email-login">
+                <option value="@gmail.com" />
+                <option value="@outlook.com" />
+                <option value="@hotmail.com" />
+                <option value="@yahoo.com" />
+              </datalist>
             </div>
 
             <div className="mb-4">
@@ -85,6 +92,10 @@ function Login() {
               Entrar
             </button>
           </form>
+
+          <div className="mt-3 small text-muted">
+            Não tem conta? Solicite criação com o administrador do sistema.
+          </div>
         </section>
       </div>
     </div>

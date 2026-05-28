@@ -35,3 +35,8 @@ build/
 # Pastas locais de anotacoes/estudo (nao versionar)
 anotacoes_melhorias/
 melhorias/
+
+# Pastas/ferramentas locais (nao versionar)
+.agents/
+.codex/
+*.log

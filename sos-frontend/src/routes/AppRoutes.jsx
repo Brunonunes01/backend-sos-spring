@@ -11,6 +11,9 @@ import OrdemList from '../pages/ordens/OrdemList'
 import OrdemForm from '../pages/ordens/OrdemForm'
 import OrcamentoList from '../pages/orcamentos/OrcamentoList'
 import OrcamentoForm from '../pages/orcamentos/OrcamentoForm'
+import ContaPage from '../pages/conta/ContaPage'
+import UsuarioList from '../pages/usuarios/UsuarioList'
+import UsuarioForm from '../pages/usuarios/UsuarioForm'
 import ProtectedRoute from '../components/ProtectedRoute'
 
 function AppRoutes() {
@@ -159,6 +162,42 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <OrcamentoForm />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/usuarios"
+        element={
+          <ProtectedRoute allowedProfiles={['ADMIN']}>
+            <UsuarioList />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/usuarios/novo"
+        element={
+          <ProtectedRoute allowedProfiles={['ADMIN']}>
+            <UsuarioForm />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/usuarios/editar/:id"
+        element={
+          <ProtectedRoute allowedProfiles={['ADMIN']}>
+            <UsuarioForm />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/conta"
+        element={
+          <ProtectedRoute>
+            <ContaPage />
           </ProtectedRoute>
         }
       />

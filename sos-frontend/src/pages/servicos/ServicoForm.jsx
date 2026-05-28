@@ -9,6 +9,9 @@ import {
 } from '../../services/servicoService'
 import { listarCategorias } from '../../services/categoriaService'
 
+const REGEX_NOME = /^(?=.*[A-Za-zÀ-ÿ])[A-Za-zÀ-ÿ0-9 .,'-]{3,150}$/
+const REGEX_DESCRICAO = /^(?=.*[A-Za-zÀ-ÿ0-9])[A-Za-zÀ-ÿ0-9 .,'\-/º°]{3,500}$/
+
 function ServicoForm() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -64,26 +67,52 @@ function ServicoForm() {
     }))
   }
 
+  function validarFormulario() {
+    const nome = form.nome.trim()
+    const descricao = form.descricao.trim()
+
+    if (!nome || !descricao || !form.precoBase || !form.categoriaId) {
+      return 'Preencha nome, descrição, preço base e categoria.'
+    }
+
+    if (!REGEX_NOME.test(nome)) {
+      return 'Nome inválido. Não use apenas números ou caracteres especiais.'
+    }
+
+    if (!REGEX_DESCRICAO.test(descricao)) {
+      return 'Descrição inválida. Evite caracteres especiais como #, $, @ e *.'
+    }
+
+    if (Number(form.precoBase) <= 0) {
+      return 'O preço base deve ser maior que zero.'
+    }
+
+    return ''
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setErro('')
 
-    if (!form.nome || !form.precoBase || !form.categoriaId) {
-      setErro('Preencha nome, preço base e categoria.')
+    const mensagemErro = validarFormulario()
+    if (mensagemErro) {
+      setErro(mensagemErro)
       return
     }
 
-    if (Number(form.precoBase) <= 0) {
-      setErro('O preço base deve ser maior que zero.')
-      return
+    const payload = {
+      nome: form.nome.trim(),
+      descricao: form.descricao.trim(),
+      precoBase: Number(form.precoBase),
+      categoriaId: Number(form.categoriaId)
     }
 
     try {
       if (editando) {
-        await atualizarServico(id, form)
+        await atualizarServico(id, payload)
         alert('Serviço atualizado com sucesso.')
       } else {
-        await criarServico(form)
+        await criarServico(payload)
         alert('Serviço cadastrado com sucesso.')
       }
 
@@ -118,6 +147,8 @@ function ServicoForm() {
                 name="nome"
                 value={form.nome}
                 onChange={handleChange}
+                maxLength="150"
+                required
               />
             </div>
 
@@ -129,6 +160,8 @@ function ServicoForm() {
                 rows="4"
                 value={form.descricao}
                 onChange={handleChange}
+                maxLength="500"
+                required
               />
             </div>
 
@@ -137,11 +170,13 @@ function ServicoForm() {
                 <label className="form-label">Preço Base</label>
                 <input
                   type="number"
+                  min="0.01"
                   step="0.01"
                   className="form-control"
                   name="precoBase"
                   value={form.precoBase}
                   onChange={handleChange}
+                  required
                 />
               </div>
 
@@ -152,6 +187,7 @@ function ServicoForm() {
                   name="categoriaId"
                   value={form.categoriaId}
                   onChange={handleChange}
+                  required
                 >
                   <option value="">Selecione</option>
                   {categorias.map((categoria) => (

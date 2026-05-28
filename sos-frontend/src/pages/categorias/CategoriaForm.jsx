@@ -8,6 +8,9 @@ import {
   atualizarCategoria
 } from '../../services/categoriaService'
 
+const REGEX_NOME = /^(?=.*[A-Za-zÀ-ÿ])[A-Za-zÀ-ÿ0-9 .,'-]{3,100}$/
+const REGEX_DESCRICAO = /^(?=.*[A-Za-zÀ-ÿ0-9])[A-Za-zÀ-ÿ0-9 .,'\-/º°]{3,500}$/
+
 function CategoriaForm() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -55,21 +58,46 @@ function CategoriaForm() {
     }))
   }
 
+  function validarFormulario() {
+    const nome = form.nome.trim()
+    const descricao = form.descricao.trim()
+
+    if (!nome || !descricao) {
+      return 'Preencha nome e descrição da categoria.'
+    }
+
+    if (!REGEX_NOME.test(nome)) {
+      return 'Nome inválido. Não use apenas números ou caracteres especiais.'
+    }
+
+    if (!REGEX_DESCRICAO.test(descricao)) {
+      return 'Descrição inválida. Evite caracteres especiais como #, $, @ e *.'
+    }
+
+    return ''
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setErro('')
 
-    if (!form.nome) {
-      setErro('Preencha o nome da categoria.')
+    const mensagemErro = validarFormulario()
+    if (mensagemErro) {
+      setErro(mensagemErro)
       return
+    }
+
+    const payload = {
+      nome: form.nome.trim(),
+      descricao: form.descricao.trim()
     }
 
     try {
       if (editando) {
-        await atualizarCategoria(id, form)
+        await atualizarCategoria(id, payload)
         alert('Categoria atualizada com sucesso.')
       } else {
-        await criarCategoria(form)
+        await criarCategoria(payload)
         alert('Categoria cadastrada com sucesso.')
       }
 
@@ -104,6 +132,8 @@ function CategoriaForm() {
                 name="nome"
                 value={form.nome}
                 onChange={handleChange}
+                maxLength="100"
+                required
               />
             </div>
 
@@ -115,6 +145,8 @@ function CategoriaForm() {
                 rows="4"
                 value={form.descricao}
                 onChange={handleChange}
+                maxLength="500"
+                required
               />
             </div>
           </div>

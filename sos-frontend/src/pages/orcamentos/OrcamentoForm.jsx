@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import PageHeader from '../../components/PageHeader'
 import { listarClientes } from '../../services/clienteService'
+import { listarServicos } from '../../services/servicoService'
 import { sugerirPrecosProduto } from '../../services/inteligenciaService'
 import {
   buscarOrcamentoPorId,
@@ -53,12 +54,16 @@ function montarLinkBuscaMercadoLivre(consulta) {
   return `https://lista.mercadolivre.com.br/${encodeURIComponent(consulta || '').replace(/%20/g, '-').toLowerCase()}`
 }
 
+const REGEX_DESCRICAO_PRODUTO = /^(?=.*[A-Za-zÀ-ÿ])[A-Za-zÀ-ÿ0-9 .-]+$/
+
 function OrcamentoForm() {
   const navigate = useNavigate()
   const { id } = useParams()
   const editando = !!id
 
   const [clientes, setClientes] = useState([])
+  const [servicos, setServicos] = useState([])
+  const [servicoSelecionadoId, setServicoSelecionadoId] = useState('')
   const [erro, setErro] = useState('')
   const [consultaProduto, setConsultaProduto] = useState('')
   const [buscandoProdutos, setBuscandoProdutos] = useState(false)
@@ -71,14 +76,19 @@ function OrcamentoForm() {
     prioridade: 'MEDIA',
     descricaoProblema: '',
     observacoes: '',
-    itens: [novoItemProduto()]
+    itens: []
   })
 
   useEffect(() => {
     async function carregarDados() {
       try {
-        const dadosClientes = await listarClientes()
+        const [dadosClientes, dadosServicos] = await Promise.all([
+          listarClientes(),
+          listarServicos()
+        ])
+
         setClientes(dadosClientes)
+        setServicos(dadosServicos)
 
         if (editando) {
           const orcamento = await buscarOrcamentoPorId(id)
@@ -89,16 +99,19 @@ function OrcamentoForm() {
             return
           }
 
-          const itens = (orcamento.itens || []).map((item) => ({
-            id: item.id,
-            tipoItem: 'PRODUTO',
-            descricaoItem: item.descricaoItem || item.servicoNome || '',
-            quantidade: Number(item.quantidade || 1),
-            precoUnitario: Number(item.precoUnitario || 0),
-            subtotal: Number(item.subtotal || 0),
-            referenciaLink: item.referenciaLink || '',
-            referenciaFonte: item.referenciaFonte || ''
-          }))
+          const itemServico = (orcamento.itens || []).find((item) => item.tipoItem === 'SERVICO' || item.servicoId)
+          const itensProduto = (orcamento.itens || [])
+            .filter((item) => item.tipoItem !== 'SERVICO' && !item.servicoId)
+            .map((item) => ({
+              id: item.id,
+              tipoItem: 'PRODUTO',
+              descricaoItem: item.descricaoItem || '',
+              quantidade: Number(item.quantidade || 1),
+              precoUnitario: Number(item.precoUnitario || 0),
+              subtotal: Number(item.subtotal || 0),
+              referenciaLink: item.referenciaLink || '',
+              referenciaFonte: item.referenciaFonte || ''
+            }))
 
           setForm({
             clienteId: orcamento.clienteId,
@@ -106,8 +119,12 @@ function OrcamentoForm() {
             prioridade: orcamento.prioridade || 'MEDIA',
             descricaoProblema: orcamento.descricaoProblema || '',
             observacoes: orcamento.observacoes || '',
-            itens: itens.length > 0 ? itens : [novoItemProduto()]
+            itens: itensProduto
           })
+
+          if (itemServico?.servicoId) {
+            setServicoSelecionadoId(String(itemServico.servicoId))
+          }
         }
       } catch (error) {
         alert(error.message)
@@ -116,6 +133,12 @@ function OrcamentoForm() {
 
     carregarDados()
   }, [editando, id, navigate])
+
+  const servicoSelecionado = useMemo(() => {
+    const idServico = Number(servicoSelecionadoId)
+    if (!idServico) return null
+    return servicos.find((servico) => Number(servico.id) === idServico) || null
+  }, [servicoSelecionadoId, servicos])
 
   function handleChange(e) {
     const { name, value } = e.target
@@ -157,11 +180,6 @@ function OrcamentoForm() {
   }
 
   function removerItem(index) {
-    if (form.itens.length === 1) {
-      alert('O orçamento precisa ter pelo menos um item no carrinho.')
-      return
-    }
-
     const novosItens = form.itens.filter((_, i) => i !== index)
 
     setForm((prev) => ({
@@ -197,12 +215,15 @@ function OrcamentoForm() {
     }
   }
 
-  const valorTotal = useMemo(() => {
+  const valorProdutos = useMemo(() => {
     return form.itens.reduce(
       (total, item) => total + Number(item.subtotal || 0),
       0
     )
   }, [form.itens])
+
+  const valorServico = Number(servicoSelecionado?.precoBase || 0)
+  const valorTotal = valorServico + valorProdutos
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -213,26 +234,61 @@ function OrcamentoForm() {
       return
     }
 
-    if (!form.descricaoProblema) {
+    if (!servicoSelecionadoId) {
+      setErro('Selecione o serviço do orçamento.')
+      return
+    }
+
+    if (!form.descricaoProblema.trim()) {
       setErro('Preencha a descrição do problema.')
       return
     }
 
     const itemInvalido = form.itens.some((item) => {
-      return !item.descricaoItem || Number(item.quantidade) <= 0 || Number(item.precoUnitario) <= 0
+      return !item.descricaoItem
+        || !REGEX_DESCRICAO_PRODUTO.test(String(item.descricaoItem).trim())
+        || Number(item.quantidade) <= 0
+        || Number(item.precoUnitario) <= 0
     })
 
     if (itemInvalido) {
-      setErro('Preencha corretamente os produtos do carrinho.')
+      setErro('Preencha corretamente os produtos. O nome do produto deve conter letras e não pode usar caracteres inválidos.')
       return
+    }
+
+    const itensPayload = [
+      {
+        tipoItem: 'SERVICO',
+        servicoId: Number(servicoSelecionadoId),
+        descricaoItem: servicoSelecionado?.nome || form.descricaoProblema.trim(),
+        quantidade: 1,
+        precoUnitario: valorServico > 0 ? valorServico : null,
+        referenciaLink: null,
+        referenciaFonte: null
+      },
+      ...form.itens.map((item) => ({
+        tipoItem: 'PRODUTO',
+        descricaoItem: String(item.descricaoItem).trim(),
+        quantidade: Number(item.quantidade),
+        precoUnitario: Number(item.precoUnitario),
+        referenciaLink: item.referenciaLink || null,
+        referenciaFonte: item.referenciaFonte || null
+      }))
+    ]
+
+    const payload = {
+      ...form,
+      descricaoProblema: form.descricaoProblema.trim(),
+      observacoes: form.observacoes.trim(),
+      itens: itensPayload
     }
 
     try {
       if (editando) {
-        await atualizarOrcamento(id, form)
+        await atualizarOrcamento(id, payload)
         alert('Orçamento atualizado com sucesso.')
       } else {
-        await criarOrcamento(form)
+        await criarOrcamento(payload)
         alert('Orçamento cadastrado com sucesso.')
       }
 
@@ -247,7 +303,7 @@ function OrcamentoForm() {
       <PageHeader
         eyebrow="Orçamentos"
         title={editando ? 'Editar Orçamento' : 'Novo Orçamento'}
-        description="Serviços ficam fora do carrinho. Aqui entram somente produtos e materiais com link de referência."
+        description="Selecione o serviço e, se necessário, adicione produtos e materiais para compor o orçamento."
       />
 
       <form onSubmit={handleSubmit}>
@@ -258,11 +314,11 @@ function OrcamentoForm() {
             <div className="form-section">
               <div className="form-section-header">
                 <h2 className="form-section-title">Dados do orçamento</h2>
-                <p className="form-section-description">Cliente, prioridade e descrição da solicitação.</p>
+                <p className="form-section-description">Cliente, serviço, prioridade e descrição da solicitação.</p>
               </div>
               <div className="form-section-body">
                 <div className="row">
-                  <div className="col-md-7 mb-3">
+                  <div className="col-md-6 mb-3">
                     <label className="form-label">Cliente</label>
                     <select
                       className="form-select"
@@ -279,7 +335,23 @@ function OrcamentoForm() {
                     </select>
                   </div>
 
-                  <div className="col-md-3 mb-3">
+                  <div className="col-md-4 mb-3">
+                    <label className="form-label">Serviço</label>
+                    <select
+                      className="form-select"
+                      value={servicoSelecionadoId}
+                      onChange={(e) => setServicoSelecionadoId(e.target.value)}
+                    >
+                      <option value="">Selecione</option>
+                      {servicos.map((servico) => (
+                        <option key={servico.id} value={servico.id}>
+                          {servico.nome} - {formatarMoeda(servico.precoBase)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-md-2 mb-3">
                     <label className="form-label">Prioridade</label>
                     <select
                       className="form-select"
@@ -296,7 +368,7 @@ function OrcamentoForm() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label">Descrição do Problema</label>
+                  <label className="form-label">Serviço solicitado / descrição do problema</label>
                   <textarea
                     className="form-control"
                     name="descricaoProblema"
@@ -321,8 +393,8 @@ function OrcamentoForm() {
 
             <div className="form-section">
               <div className="form-section-header">
-                <h2 className="form-section-title">Produtos para comprar</h2>
-                <p className="form-section-description">Busque referências online e adicione no carrinho.</p>
+                <h2 className="form-section-title">Produtos para comprar (opcional)</h2>
+                <p className="form-section-description">Use apenas quando o orçamento também incluir materiais/produtos.</p>
               </div>
               <div className="form-section-body">
                 <div className="product-search-panel">
@@ -411,8 +483,8 @@ function OrcamentoForm() {
               <div className="form-section-header">
                 <div className="d-flex justify-content-between align-items-center gap-3">
                   <div>
-                    <h2 className="form-section-title">Carrinho do orçamento</h2>
-                    <p className="form-section-description">Somente produtos e materiais que serão enviados ao cliente.</p>
+                    <h2 className="form-section-title">Carrinho de produtos (opcional)</h2>
+                    <p className="form-section-description">Você pode salvar o orçamento apenas com serviço, sem produtos.</p>
                   </div>
                   <button type="button" className="btn btn-success" onClick={adicionarProdutoManual}>
                     + Produto
@@ -420,6 +492,12 @@ function OrcamentoForm() {
                 </div>
               </div>
               <div className="form-section-body">
+                {form.itens.length === 0 && (
+                  <div className="alert alert-secondary mb-0">
+                    Nenhum produto adicionado. Este orçamento será salvo apenas com o serviço selecionado.
+                  </div>
+                )}
+
                 {form.itens.map((item, index) => (
                   <div key={index} className="item-card">
                     <div className="item-card-header">
@@ -501,12 +579,21 @@ function OrcamentoForm() {
           <aside className="form-sidebar">
             <div className="form-sidebar-card">
               <div className="total-box mb-3">
+                <small>Serviço selecionado</small>
+                <strong>{servicoSelecionado ? servicoSelecionado.nome : 'Nenhum serviço selecionado'}</strong>
+              </div>
+              <div className="total-box mb-3">
+                <small>Valor serviço</small>
+                <strong>{formatarMoeda(valorServico)}</strong>
+              </div>
+              <div className="total-box mb-3">
+                <small>Valor produtos</small>
+                <strong>{formatarMoeda(valorProdutos)}</strong>
+              </div>
+              <div className="total-box mb-3">
                 <small>Valor total</small>
                 <strong>{formatarMoeda(valorTotal)}</strong>
               </div>
-              <p className="text-muted small mb-3">
-                O carrinho considera apenas materiais/produtos. Serviços ficam fora dos itens.
-              </p>
               <div className="d-grid gap-2">
                 <button type="submit" className="btn btn-primary">
                   Salvar Orçamento
